@@ -1,0 +1,54 @@
+{
+  "empresa": {
+    "nome": "CD Tech",
+    "segmento": "Automação e Agentes IA para Pequenos Negócios",
+    "localizacao": "Fortaleza, CE — Brasil",
+    "site": "https://cd-tech-lp.pages.dev",
+    "contato": {
+      "email": "dimitrearaujo@gmail.com",
+      "whatsapp": "5585988261397"
+    }
+  },
+  "nicho": ["clínicas veterinárias", "clínicas odontológicas", "clínicas estéticas", "academias", "studios"],
+  "servicos": [
+    {
+      "id": "setup1",
+      "nome": "Operação IA Base",
+      "descricao": "WhatsApp + Email automatizados com agente IA de vendas",
+      "preco_base": 497
+    },
+    {
+      "id": "setup2",
+      "nome": "Operação Profissional",
+      "descricao": "RTK, Guardião 24/7, Supabase, Mini-CRM",
+      "preco_base": 997
+    },
+    {
+      "id": "setup9",
+      "nome": "Clínica Automatizada",
+      "descricao": "5 agentes: recepcionista 24/7, confirmador de véspera, resgate de faltosos, retorno + avaliação Google, painel gestor",
+      "preco_base": 1497
+    }
+  ],
+  "diferenciais": [
+    "Implantação em ~40 minutos",
+    "White-label disponível",
+    "Suporte via WhatsApp",
+    "Integração com Evolution API",
+    "Stack 100% open-source"
+  ],
+  "faq": [
+    {
+      "pergunta": "Vocês atendem qual tipo de negócio?",
+      "resposta": "Atendemos principalmente clínicas (vet, odonto, estética), academias e studios que querem automatizar atendimento e prospecção com IA."
+    },
+    {
+      "pergunta": "Preciso saber programar?",
+      "resposta": "Não. Toda implantação é feita por nós, geralmente em menos de 1 hora."
+    },
+    {
+      "pergunta": "Qual o investimento?",
+      "resposta": "Os pacotes começam em R$ 497. Fale conosco para um orçamento personalizado."
+    }
+  ]
+}

@@ -1,0 +1,231 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Syntax Check & Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # -----------------------------------------------------------------------
+      # Syntax check em todos os arquivos .py
+      # -----------------------------------------------------------------------
+      - name: Syntax check — todos os arquivos .py
+        run: |
+          echo "=== Verificando sintaxe Python ==="
+          find . -name "*.py" -not -path "./.venv/*" | while read f; do
+            python -c "
+import ast, sys
+with open('$f', 'r', encoding='utf-8') as fh:
+    src = fh.read()
+try:
+    ast.parse(src)
+    print('OK:', '$f')
+except SyntaxError as e:
+    print('ERRO:', '$f', str(e))
+    sys.exit(1)
+"
+          done
+
+      # -----------------------------------------------------------------------
+      # Instala apenas as dependências necessárias para os testes inline
+      # (sem mcp/anthropic para não precisar de API keys)
+      # -----------------------------------------------------------------------
+      - name: Instala dependências de teste
+        run: |
+          pip install python-dotenv --quiet
+
+      # -----------------------------------------------------------------------
+      # Teste 1 — knowledge_base: insert + search retorna resultado
+      # -----------------------------------------------------------------------
+      - name: Teste — knowledge_base insert e search
+        run: |
+          python -c "
+import sys, os, tempfile
+
+# Usa DB temporário para não poluir o repo
+with tempfile.TemporaryDirectory() as tmpdir:
+    db_path = os.path.join(tmpdir, 'test_kb.db')
+
+    sys.path.insert(0, '.')
+    from mcp_server.knowledge_base import KnowledgeBase, _tokenize, _tf_vector, _cosine_similarity
+
+    kb = KnowledgeBase(db_path=db_path)
+
+    # Testa insert
+    doc_id = kb.insert('Clínica Veterinária', 'Atendemos cães e gatos com carinho e profissionalismo.', 'vet')
+    assert doc_id == 1, f'Esperado id=1, obtido {doc_id}'
+
+    kb.insert('Academia Fitness', 'Treinamentos personalizados para todos os níveis.', 'academia')
+    kb.insert('Studio de Dança', 'Aulas de ballet, jazz e contemporâneo.', 'studio')
+
+    assert kb.count() == 3, f'Esperado 3 docs, obtido {kb.count()}'
+
+    # Testa search
+    results = kb.search('veterinário cachorro', max_results=2)
+    assert len(results) > 0, 'Search não retornou resultados'
+    assert 'title' in results[0], 'Resultado sem campo title'
+    assert 'content' in results[0], 'Resultado sem campo content'
+    assert 'score' in results[0], 'Resultado sem campo score'
+    assert results[0]['score'] >= 0.0, 'Score inválido'
+
+    # Testa que o resultado mais relevante é sobre veterinária
+    assert results[0]['title'] == 'Clínica Veterinária', f'Resultado inesperado: {results[0][\"title\"]}'
+
+    # Testa tokenizador
+    tokens = _tokenize('Olá, mundo! Teste 123.')
+    assert 'olá' in tokens, f'Tokenizador falhou: {tokens}'
+    assert '123' in tokens, f'Tokenizador ignorou número: {tokens}'
+
+    # Testa cosine similarity
+    va = _tf_vector(['python', 'python', 'code'])
+    vb = _tf_vector(['python', 'code', 'test'])
+    sim = _cosine_similarity(va, vb)
+    assert 0.0 < sim <= 1.0, f'Similaridade fora do range: {sim}'
+
+    # Testa delete
+    deleted = kb.delete(1)
+    assert deleted, 'Delete falhou'
+    assert kb.count() == 2, f'Esperado 2 docs após delete, obtido {kb.count()}'
+
+    print('PASSOU: knowledge_base — insert, search, tokenize, cosine, delete OK')
+"
+
+      # -----------------------------------------------------------------------
+      # Teste 2 — tools: 3 tools registradas com name e description
+      # -----------------------------------------------------------------------
+      - name: Teste — tools registradas com name e description
+        run: |
+          python -c "
+import sys
+sys.path.insert(0, '.')
+
+from mcp_server.tools import TOOL_DEFINITIONS, TOOL_HANDLERS
+
+expected_names = {'search_knowledge_base', 'summarize_text', 'get_business_context'}
+
+# Verifica que as 3 tools estão definidas
+defined_names = {t['name'] for t in TOOL_DEFINITIONS}
+assert defined_names == expected_names, f'Tools faltando: {expected_names - defined_names}'
+
+# Verifica que cada tool tem name, description e input_schema
+for tool in TOOL_DEFINITIONS:
+    assert 'name' in tool, f'Tool sem name: {tool}'
+    assert 'description' in tool, f'Tool sem description: {tool}'
+    assert 'input_schema' in tool, f'Tool sem input_schema: {tool}'
+    assert len(tool['description']) > 10, f'Description muito curta: {tool[\"name\"]}'
+
+# Verifica que handlers existem para todas as tools
+for name in expected_names:
+    assert name in TOOL_HANDLERS, f'Handler não encontrado: {name}'
+    assert callable(TOOL_HANDLERS[name]), f'Handler não é callable: {name}'
+
+print('PASSOU: tools — 3 tools registradas com name/description/schema/handler OK')
+"
+
+      # -----------------------------------------------------------------------
+      # Teste 3 — prompts: summarize_prompt retorna string com o texto incluído
+      # -----------------------------------------------------------------------
+      - name: Teste — prompts summarize_prompt e outros templates
+        run: |
+          python -c "
+import sys
+sys.path.insert(0, '.')
+
+from mcp_server.prompts import summarize_prompt, context_query_prompt, knowledge_base_prompt
+
+texto = 'Python é uma linguagem de programação versátil e poderosa.'
+
+# Teste básico: prompt retorna string com texto incluído
+prompt = summarize_prompt(texto)
+assert isinstance(prompt, str), 'Retorno não é string'
+assert texto in prompt, 'Texto não está no prompt'
+assert 'TEXTO:' in prompt, 'Seção TEXTO: não encontrada'
+assert 'RESUMO:' in prompt, 'Seção RESUMO: não encontrada'
+assert len(prompt) > len(texto), 'Prompt mais curto que o texto original'
+
+# Teste com max_words
+prompt_limited = summarize_prompt(texto, max_words=50)
+assert '50' in prompt_limited, 'max_words não aparece no prompt'
+
+# Teste com language customizado
+prompt_en = summarize_prompt(texto, language='inglês')
+assert 'inglês' in prompt_en, 'Idioma não aplicado no prompt'
+
+# Teste context_query_prompt
+ctx_prompt = context_query_prompt('Qual o preço?', '{\"preco\": 497}')
+assert isinstance(ctx_prompt, str), 'context_query_prompt não é string'
+assert 'Qual o preço?' in ctx_prompt, 'Pergunta não está no prompt'
+assert '497' in ctx_prompt, 'Contexto não está no prompt'
+
+# Teste knowledge_base_prompt sem resultados
+kb_prompt_empty = knowledge_base_prompt('teste', [])
+assert 'Nenhum documento' in kb_prompt_empty, 'Mensagem de vazio não encontrada'
+
+# Teste knowledge_base_prompt com resultados
+results = [{'title': 'Doc 1', 'content': 'Conteúdo do documento 1', 'score': 0.9}]
+kb_prompt = knowledge_base_prompt('teste', results)
+assert 'Doc 1' in kb_prompt, 'Título do doc não está no prompt'
+assert '0.9' in kb_prompt, 'Score não está no prompt'
+
+print('PASSOU: prompts — summarize_prompt, context_query_prompt, knowledge_base_prompt OK')
+"
+
+      # -----------------------------------------------------------------------
+      # Teste 4 — context: BusinessContext carrega JSON e expõe métodos
+      # -----------------------------------------------------------------------
+      - name: Teste — context BusinessContext
+        run: |
+          python -c "
+import sys, json, tempfile, os
+sys.path.insert(0, '.')
+
+from mcp_server.context import BusinessContext
+
+# Cria JSON de teste temporário
+ctx_data = {
+    'empresa': {'nome': 'Teste Corp', 'segmento': 'Tecnologia'},
+    'servicos': [{'nome': 'Serv A', 'descricao': 'Descricao A', 'preco_base': 100}],
+    'faq': [{'pergunta': 'O que vocês fazem?', 'resposta': 'Automatizamos.'}],
+    'diferenciais': ['Rápido', 'Barato']
+}
+
+with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False, encoding='utf-8') as f:
+    json.dump(ctx_data, f, ensure_ascii=False)
+    tmp_path = f.name
+
+try:
+    ctx = BusinessContext(path=tmp_path)
+
+    assert ctx.company_name() == 'Teste Corp', f'Nome errado: {ctx.company_name()}'
+
+    services = ctx.services_summary()
+    assert 'Serv A' in services, 'Serviço não aparece no summary'
+    assert 'R\$' in services or 'R$' in services, 'Preço não formatado'
+
+    faq = ctx.faq_as_text()
+    assert 'O que vocês fazem?' in faq, 'Pergunta FAQ não encontrada'
+    assert 'Automatizamos.' in faq, 'Resposta FAQ não encontrada'
+
+    text = ctx.as_text()
+    assert isinstance(text, str), 'as_text() não é string'
+    parsed = json.loads(text)
+    assert parsed['empresa']['nome'] == 'Teste Corp', 'JSON parseado com dados errados'
+
+    print('PASSOU: context — BusinessContext carrega JSON e expõe métodos OK')
+finally:
+    os.unlink(tmp_path)
+"
