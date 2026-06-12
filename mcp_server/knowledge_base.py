@@ -47,10 +47,16 @@ class KnowledgeBase:
 
     def __init__(self, db_path: str = "./data/knowledge_base.db"):
         self.db_path = db_path
-        os.makedirs(os.path.dirname(db_path) if os.path.dirname(db_path) else ".", exist_ok=True)
+        self._mem_conn: sqlite3.Connection | None = None
+        if db_path == ":memory:":
+            self._mem_conn = sqlite3.connect(":memory:")
+        else:
+            os.makedirs(os.path.dirname(db_path) if os.path.dirname(db_path) else ".", exist_ok=True)
         self._init_db()
 
     def _connect(self) -> sqlite3.Connection:
+        if self._mem_conn is not None:
+            return self._mem_conn
         return sqlite3.connect(self.db_path)
 
     def _init_db(self) -> None:
