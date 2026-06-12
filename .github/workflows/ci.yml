@@ -24,138 +24,16 @@ jobs:
         run: pip install python-dotenv --quiet
 
       - name: Syntax check em todos os arquivos .py
-        run: |
-          python -c "
-import ast, os, sys
-erros = []
-for root, dirs, files in os.walk('.'):
-    dirs[:] = [d for d in dirs if d not in ['.venv', '.git', '__pycache__']]
-    for fname in files:
-        if not fname.endswith('.py'):
-            continue
-        path = os.path.join(root, fname)
-        with open(path, 'r', encoding='utf-8') as fh:
-            src = fh.read()
-        try:
-            ast.parse(src)
-            print('OK:', path)
-        except SyntaxError as e:
-            print('ERRO:', path, str(e))
-            erros.append(path)
-if erros:
-    sys.exit(1)
-print('Todos os arquivos OK')
-"
+        run: python scripts/ci_syntax_check.py
 
-      - name: Teste knowledge_base insert e search
-        run: |
-          python -c "
-import sys, os, tempfile
-with tempfile.TemporaryDirectory() as tmpdir:
-    db_path = os.path.join(tmpdir, 'test_kb.db')
-    sys.path.insert(0, '.')
-    from mcp_server.knowledge_base import KnowledgeBase, _tokenize, _tf_vector, _cosine_similarity
-    kb = KnowledgeBase(db_path=db_path)
-    doc_id = kb.insert('Clinica Veterinaria', 'Atendemos caes e gatos com carinho e profissionalismo.', 'vet')
-    assert doc_id == 1, 'Esperado id=1, obtido ' + str(doc_id)
-    kb.insert('Academia Fitness', 'Treinamentos personalizados para todos os niveis.', 'academia')
-    kb.insert('Studio de Danca', 'Aulas de ballet, jazz e contemporaneo.', 'studio')
-    assert kb.count() == 3, 'Esperado 3 docs, obtido ' + str(kb.count())
-    results = kb.search('veterinario cachorro', max_results=2)
-    assert len(results) > 0, 'Search nao retornou resultados'
-    assert 'title' in results[0], 'Resultado sem campo title'
-    assert 'score' in results[0], 'Resultado sem campo score'
-    assert results[0]['score'] >= 0.0, 'Score invalido'
-    tokens = _tokenize('Ola mundo teste 123.')
-    assert '123' in tokens, 'Tokenizador ignorou numero: ' + str(tokens)
-    va = _tf_vector(['python', 'python', 'code'])
-    vb = _tf_vector(['python', 'code', 'test'])
-    sim = _cosine_similarity(va, vb)
-    assert 0.0 < sim <= 1.0, 'Similaridade fora do range: ' + str(sim)
-    deleted = kb.delete(1)
-    assert deleted, 'Delete falhou'
-    assert kb.count() == 2, 'Esperado 2 docs apos delete'
-    print('PASSOU: knowledge_base OK')
-"
+      - name: Teste knowledge_base
+        run: python scripts/ci_test_knowledge_base.py
 
-      - name: Teste tools registradas com name e description
-        run: |
-          python -c "
-import sys
-sys.path.insert(0, '.')
-from mcp_server.tools import TOOL_DEFINITIONS, TOOL_HANDLERS
-expected = {'search_knowledge_base', 'summarize_text', 'get_business_context'}
-defined = {t['name'] for t in TOOL_DEFINITIONS}
-assert defined == expected, 'Tools faltando: ' + str(expected - defined)
-for tool in TOOL_DEFINITIONS:
-    assert 'name' in tool, 'Tool sem name'
-    assert 'description' in tool, 'Tool sem description: ' + tool.get('name','?')
-    assert 'input_schema' in tool, 'Tool sem input_schema: ' + tool['name']
-    assert len(tool['description']) > 10, 'Description muito curta: ' + tool['name']
-for name in expected:
-    assert name in TOOL_HANDLERS, 'Handler nao encontrado: ' + name
-    assert callable(TOOL_HANDLERS[name]), 'Handler nao callable: ' + name
-print('PASSOU: tools OK')
-"
+      - name: Teste tools
+        run: python scripts/ci_test_tools.py
 
-      - name: Teste prompts summarize_prompt e templates
-        run: |
-          python -c "
-import sys
-sys.path.insert(0, '.')
-from mcp_server.prompts import summarize_prompt, context_query_prompt, knowledge_base_prompt
-texto = 'Python e uma linguagem de programacao versatil e poderosa.'
-prompt = summarize_prompt(texto)
-assert isinstance(prompt, str), 'Retorno nao e string'
-assert texto in prompt, 'Texto nao esta no prompt'
-assert 'TEXTO:' in prompt, 'Secao TEXTO: nao encontrada'
-assert 'RESUMO:' in prompt, 'Secao RESUMO: nao encontrada'
-assert len(prompt) > len(texto), 'Prompt mais curto que o texto original'
-prompt_limited = summarize_prompt(texto, max_words=50)
-assert '50' in prompt_limited, 'max_words nao aparece no prompt'
-prompt_en = summarize_prompt(texto, language='ingles')
-assert 'ingles' in prompt_en, 'Idioma nao aplicado no prompt'
-ctx_prompt = context_query_prompt('Qual o preco?', '{\"preco\": 497}')
-assert isinstance(ctx_prompt, str), 'context_query_prompt nao e string'
-assert 'Qual o preco?' in ctx_prompt, 'Pergunta nao esta no prompt'
-assert '497' in ctx_prompt, 'Contexto nao esta no prompt'
-kb_prompt_empty = knowledge_base_prompt('teste', [])
-assert 'Nenhum documento' in kb_prompt_empty, 'Mensagem de vazio nao encontrada'
-results = [{'title': 'Doc 1', 'content': 'Conteudo do documento 1', 'score': 0.9}]
-kb_prompt = knowledge_base_prompt('teste', results)
-assert 'Doc 1' in kb_prompt, 'Titulo do doc nao esta no prompt'
-assert '0.9' in kb_prompt, 'Score nao esta no prompt'
-print('PASSOU: prompts OK')
-"
+      - name: Teste prompts
+        run: python scripts/ci_test_prompts.py
 
-      - name: Teste context BusinessContext
-        run: |
-          python -c "
-import sys, json, tempfile, os
-sys.path.insert(0, '.')
-from mcp_server.context import BusinessContext
-ctx_data = {
-    'empresa': {'nome': 'Teste Corp', 'segmento': 'Tecnologia'},
-    'servicos': [{'nome': 'Serv A', 'descricao': 'Descricao A', 'preco_base': 100}],
-    'faq': [{'pergunta': 'O que voces fazem?', 'resposta': 'Automatizamos.'}],
-    'diferenciais': ['Rapido', 'Barato']
-}
-with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False, encoding='utf-8') as f:
-    json.dump(ctx_data, f, ensure_ascii=False)
-    tmp_path = f.name
-try:
-    ctx = BusinessContext(path=tmp_path)
-    assert ctx.company_name() == 'Teste Corp', 'Nome errado: ' + ctx.company_name()
-    services = ctx.services_summary()
-    assert 'Serv A' in services, 'Servico nao aparece no summary'
-    faq = ctx.faq_as_text()
-    assert 'O que voces fazem?' in faq, 'Pergunta FAQ nao encontrada'
-    assert 'Automatizamos.' in faq, 'Resposta FAQ nao encontrada'
-    text = ctx.as_text()
-    assert isinstance(text, str), 'as_text() nao e string'
-    parsed = json.loads(text)
-    assert parsed['empresa']['nome'] == 'Teste Corp', 'JSON parseado com dados errados'
-    print('PASSOU: context OK')
-finally:
-    os.unlink(tmp_path)
-"
+      - name: Teste context
+        run: python scripts/ci_test_context.py
