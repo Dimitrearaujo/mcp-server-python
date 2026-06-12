@@ -1,16 +1,14 @@
 """
 tools.py — Definição e registro das tools MCP.
 
-Cada tool é uma função assíncrona decorada com @mcp.tool().
-O servidor MCP expõe essas tools automaticamente via stdio.
+Os imports do pacote `mcp` são lazy (dentro de register_tools) para que
+os metadados das tools (TOOL_DEFINITIONS, TOOL_HANDLERS) possam ser
+importados e testados sem o pacote mcp instalado.
 """
 
 import os
 import json
 from typing import Any, Dict, List, Optional
-
-from mcp.server import Server
-from mcp.types import Tool, TextContent
 
 from .knowledge_base import KnowledgeBase
 from .context import BusinessContext
@@ -61,7 +59,7 @@ TOOL_DEFINITIONS: List[Dict[str, Any]] = [
                 },
                 "max_results": {
                     "type": "integer",
-                    "description": "Número máximo de documentos a retornar (padrão: 5).",
+                    "description": "Numero maximo de documentos a retornar (padrao: 5).",
                     "default": 5,
                 },
             },
@@ -71,9 +69,9 @@ TOOL_DEFINITIONS: List[Dict[str, Any]] = [
     {
         "name": "summarize_text",
         "description": (
-            "Gera um prompt formatado para sumarização de texto. "
-            "Não chama nenhuma API — retorna o prompt pronto para enviar ao LLM. "
-            "Útil para pipelines de sumarização em cadeia."
+            "Gera um prompt formatado para sumarizacao de texto. "
+            "Nao chama nenhuma API — retorna o prompt pronto para enviar ao LLM. "
+            "Util para pipelines de sumarizacao em cadeia."
         ),
         "input_schema": {
             "type": "object",
@@ -88,8 +86,8 @@ TOOL_DEFINITIONS: List[Dict[str, Any]] = [
                 },
                 "language": {
                     "type": "string",
-                    "description": "Idioma do resumo (padrão: português).",
-                    "default": "português",
+                    "description": "Idioma do resumo (padrao: portugues).",
+                    "default": "portugues",
                 },
             },
             "required": ["text"],
@@ -98,9 +96,9 @@ TOOL_DEFINITIONS: List[Dict[str, Any]] = [
     {
         "name": "get_business_context",
         "description": (
-            "Retorna o contexto completo de negócio carregado do arquivo "
+            "Retorna o contexto completo de negocio carregado do arquivo "
             "business_context.json. Pode retornar o contexto completo ou "
-            "uma seção específica (empresa, servicos, faq, diferenciais)."
+            "uma secao especifica (empresa, servicos, faq, diferenciais)."
         ),
         "input_schema": {
             "type": "object",
@@ -108,15 +106,15 @@ TOOL_DEFINITIONS: List[Dict[str, Any]] = [
                 "section": {
                     "type": "string",
                     "description": (
-                        "Seção específica a retornar: 'empresa', 'servicos', "
-                        "'faq', 'diferenciais', ou 'all' para tudo (padrão: 'all')."
+                        "Secao especifica a retornar: empresa, servicos, "
+                        "faq, diferenciais, ou all para tudo (padrao: all)."
                     ),
                     "default": "all",
                 },
                 "question": {
                     "type": "string",
                     "description": (
-                        "Pergunta opcional. Se fornecida, retorna também um "
+                        "Pergunta opcional. Se fornecida, retorna tambem um "
                         "prompt formatado para o LLM responder com base no contexto."
                     ),
                 },
@@ -128,10 +126,10 @@ TOOL_DEFINITIONS: List[Dict[str, Any]] = [
 
 
 # ---------------------------------------------------------------------------
-# Handlers das tools
+# Handlers das tools (retornam dict; register_tools converte para TextContent)
 # ---------------------------------------------------------------------------
 
-async def handle_search_knowledge_base(arguments: Dict[str, Any]) -> List[TextContent]:
+async def handle_search_knowledge_base(arguments: Dict[str, Any]) -> Dict[str, Any]:
     """Executa busca na knowledge base e retorna resultados + prompt."""
     query = arguments["query"]
     max_results = int(arguments.get("max_results", 5))
@@ -140,32 +138,30 @@ async def handle_search_knowledge_base(arguments: Dict[str, Any]) -> List[TextCo
     results = kb.search(query, max_results=max_results)
     prompt = knowledge_base_prompt(query, results)
 
-    output = {
+    return {
         "results": results,
         "total_found": len(results),
         "prompt": prompt,
     }
-    return [TextContent(type="text", text=json.dumps(output, ensure_ascii=False, indent=2))]
 
 
-async def handle_summarize_text(arguments: Dict[str, Any]) -> List[TextContent]:
-    """Formata e retorna o prompt de sumarização."""
+async def handle_summarize_text(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """Formata e retorna o prompt de sumarizacao."""
     text = arguments["text"]
     max_words = arguments.get("max_words")
-    language = arguments.get("language", "português")
+    language = arguments.get("language", "portugues")
 
     prompt = summarize_prompt(text, max_words=max_words, language=language)
 
-    output = {
+    return {
         "prompt": prompt,
         "input_length_chars": len(text),
         "input_words_approx": len(text.split()),
     }
-    return [TextContent(type="text", text=json.dumps(output, ensure_ascii=False, indent=2))]
 
 
-async def handle_get_business_context(arguments: Dict[str, Any]) -> List[TextContent]:
-    """Retorna contexto de negócio (seção ou completo) + prompt opcional."""
+async def handle_get_business_context(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """Retorna contexto de negocio (secao ou completo) + prompt opcional."""
     section = arguments.get("section", "all")
     question = arguments.get("question")
 
@@ -188,22 +184,23 @@ async def handle_get_business_context(arguments: Dict[str, Any]) -> List[TextCon
     if question:
         output["prompt"] = context_query_prompt(question, context_str)
 
-    return [TextContent(type="text", text=json.dumps(output, ensure_ascii=False, indent=2))]
+    return output
 
 
 # ---------------------------------------------------------------------------
 # Mapeamento nome → handler
 # ---------------------------------------------------------------------------
 
-TOOL_HANDLERS = {
+TOOL_HANDLERS: Dict[str, Any] = {
     "search_knowledge_base": handle_search_knowledge_base,
     "summarize_text": handle_summarize_text,
     "get_business_context": handle_get_business_context,
 }
 
 
-def register_tools(server: Server) -> None:
-    """Registra todas as tools no servidor MCP."""
+def register_tools(server: Any) -> None:
+    """Registra todas as tools no servidor MCP. Requer pacote mcp instalado."""
+    from mcp.types import Tool, TextContent
 
     @server.list_tools()
     async def list_tools() -> List[Tool]:
@@ -221,4 +218,5 @@ def register_tools(server: Server) -> None:
         handler = TOOL_HANDLERS.get(name)
         if not handler:
             raise ValueError(f"Tool desconhecida: '{name}'")
-        return await handler(arguments)
+        result = await handler(arguments)
+        return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))]
