@@ -210,6 +210,233 @@ mcp-server-python/
 
 ## Desenvolvido por
 
-**CD Tech** — Automação e Agentes IA para Pequenos Negócios  
-Fortaleza, CE — Brasil  
+**CD Tech** — Automação e Agentes IA para Pequenos Negócios
+Fortaleza, CE — Brasil
 [cd-tech-lp.pages.dev](https://cd-tech-lp.pages.dev)
+
+---
+
+<details>
+<summary>🇺🇸 English</summary>
+
+# mcp-server-python
+
+[![CI](https://github.com/dimitrearaujo/mcp-server-python/actions/workflows/ci.yml/badge.svg)](https://github.com/dimitrearaujo/mcp-server-python/actions/workflows/ci.yml)
+
+Python MCP server with custom tools for AI agents — local knowledge base, business context and text summarization.
+
+---
+
+## What is MCP?
+
+**MCP (Model Context Protocol)** is an open protocol created by Anthropic that lets AI agents (like Claude) connect to external servers to access data, execute actions and use custom tools.
+
+With an MCP server, you can:
+
+- Give Claude access to your internal knowledge base
+- Expose business data without having to paste it into the prompt manually
+- Build reusable text-processing pipelines
+- Integrate any external system as a "tool" for the agent
+
+This server exposes **3 ready-to-use tools**:
+
+| Tool | What it does |
+|------|-----------|
+| `search_knowledge_base` | Searches relevant documents in a local SQLite via cosine similarity |
+| `summarize_text` | Formats a summarization prompt (no API call — returns the ready prompt) |
+| `get_business_context` | Returns business context from a local JSON file |
+
+---
+
+## Installation
+
+### Prerequisites
+
+- Python 3.12+
+- pip
+
+### Steps
+
+```bash
+# Clone the repository
+git clone https://github.com/dimitrearaujo/mcp-server-python.git
+cd mcp-server-python
+
+# Create and activate the virtual environment
+python -m venv .venv
+source .venv/bin/activate  # Linux/Mac
+# or
+.venv\Scripts\activate  # Windows
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Configure environment variables
+cp .env.example .env
+# Edit .env as needed
+```
+
+### Configuration
+
+Edit the `.env` file:
+
+```env
+BUSINESS_CONTEXT_PATH=./business_context.json
+KB_DATABASE_PATH=./data/knowledge_base.db
+KB_MAX_RESULTS=5
+```
+
+Edit `business_context.json` with your company's data.
+
+---
+
+## How to run
+
+```bash
+python server.py
+```
+
+The server starts via **stdio** and waits for tool calls. Log output goes to stderr.
+
+---
+
+## Claude Desktop integration
+
+Add to your `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "mcp-server-python": {
+      "command": "python",
+      "args": ["/path/to/mcp-server-python/server.py"],
+      "env": {
+        "BUSINESS_CONTEXT_PATH": "/path/to/mcp-server-python/business_context.json",
+        "KB_DATABASE_PATH": "/path/to/mcp-server-python/data/knowledge_base.db"
+      }
+    }
+  }
+}
+```
+
+**Config file location:**
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+- Linux: `~/.config/Claude/claude_desktop_config.json`
+
+After restarting Claude Desktop, the tools will show up as available in the chat.
+
+---
+
+## Populating the Knowledge Base
+
+Use interactive Python or a script to insert documents:
+
+```python
+from mcp_server.knowledge_base import KnowledgeBase
+
+kb = KnowledgeBase(db_path="./data/knowledge_base.db")
+
+# Insert documents
+kb.insert(
+    title="Support Policy",
+    content="We're open Monday to Friday, 8am to 6pm. Urgent requests via WhatsApp.",
+    category="support"
+)
+
+kb.insert(
+    title="Price Table",
+    content="Basic consultation: $30. Specialized consultation: $50. Follow-up within 30 days: free.",
+    category="pricing"
+)
+
+# Search
+results = kb.search("what's the price of a consultation?")
+for r in results:
+    print(f"[{r['score']:.2f}] {r['title']}: {r['content'][:80]}...")
+```
+
+---
+
+## How to add new tools
+
+1. **Define the tool** in `mcp_server/tools.py`, adding an entry to `TOOL_DEFINITIONS`:
+
+```python
+{
+    "name": "my_new_tool",
+    "description": "Clear description of what the tool does.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "parameter": {"type": "string", "description": "..."},
+        },
+        "required": ["parameter"],
+    },
+}
+```
+
+2. **Implement the async handler**:
+
+```python
+async def handle_my_new_tool(arguments: Dict[str, Any]) -> List[TextContent]:
+    result = do_something(arguments["parameter"])
+    return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False))]
+```
+
+3. **Register the handler** in the `TOOL_HANDLERS` dict:
+
+```python
+TOOL_HANDLERS = {
+    # ... existing tools ...
+    "my_new_tool": handle_my_new_tool,
+}
+```
+
+4. Done. The tool automatically shows up via `list_tools`.
+
+---
+
+## Project structure
+
+```
+mcp-server-python/
+├── .env.example              # Required environment variables
+├── .gitignore
+├── .github/workflows/ci.yml  # CI: syntax check + unit tests
+├── README.md
+├── requirements.txt
+├── server.py                 # Entry point — starts the MCP server via stdio
+├── mcp_server/
+│   ├── __init__.py
+│   ├── tools.py              # Definition and registration of the 3 tools
+│   ├── knowledge_base.py     # SQLite + TF cosine vector search
+│   ├── context.py            # Loads business_context.json
+│   └── prompts.py            # Prompt templates
+├── business_context.json     # Business context (edit with your data)
+└── data/                     # Folder for KB files (SQLite)
+    └── .gitkeep
+```
+
+---
+
+## Technologies
+
+- **[MCP SDK](https://github.com/modelcontextprotocol/python-sdk)** — communication protocol with AI agents
+- **SQLite** — local knowledge base storage (no external server)
+- **TF Cosine Similarity** — simple vector search without external embeddings
+- **python-dotenv** — environment variable management
+
+---
+
+## Developed by
+
+**CD Tech** — AI Automation & Agents for Small Businesses
+Fortaleza, Brazil
+[cd-tech-lp.pages.dev](https://cd-tech-lp.pages.dev)
+
+</details>
+
+---
+
+[← Back to profile](https://github.com/Dimitrearaujo)
