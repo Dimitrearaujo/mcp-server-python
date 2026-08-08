@@ -1,4 +1,4 @@
-# mcp-server-python
+# MCP Server in Python
 
 [![CI](https://github.com/dimitrearaujo/mcp-server-python/actions/workflows/ci.yml/badge.svg)](https://github.com/dimitrearaujo/mcp-server-python/actions/workflows/ci.yml)
 
@@ -219,7 +219,7 @@ Fortaleza, Brazil
 <details>
 <summary>🇧🇷 Português</summary>
 
-## mcp-server-python
+## Servidor MCP em Python
 
 [![CI](https://github.com/dimitrearaujo/mcp-server-python/actions/workflows/ci.yml/badge.svg)](https://github.com/dimitrearaujo/mcp-server-python/actions/workflows/ci.yml)
 
